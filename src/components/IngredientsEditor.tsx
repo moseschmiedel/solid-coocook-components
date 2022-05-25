@@ -1,7 +1,6 @@
-import { createEffect, createSignal, Setter, JSXElement, For } from "solid-js";
-import * as List from "../util/List";
-import { Option, some, none, chain, map, isSome, unwrap } from '../util/fp/option';
-import Ingredient, { significantChanges } from "./Ingredient";
+import { createEffect, createSignal, JSXElement, For } from "solid-js";
+import { Option, some, none, chain, map, unwrap } from '../util/fp/option';
+import Ingredient from "./Ingredient";
 import {
     Draggable,
     Droppable,
@@ -9,12 +8,10 @@ import {
     DragDropSensors,
     DragOverlay,
     SortableProvider,
-    createSortable,
     createDroppable,
     closestCenter,
 } from "@thisbeyond/solid-dnd";
 import { Card } from "solid-bootstrap";
-import styles from "./IngredientsEditor.module.css";
 import "../util/layout.css";
 import * as IO from "../util/io";
 
@@ -31,223 +28,22 @@ export interface IngredientsEditorProps {
 const IngredientsEditor: (props: IngredientsEditorProps) => JSXElement =
 ({ project }) => {
 
-    const [nPIngredients, setNPIngredients] = createSignal<IngredientDef[]>([]);
-    const [pIngredients, setPIngredients] = createSignal<IngredientDef[]>([]);
-
-    const fetchIngredients: () => Promise<void> =
-    async () => {
-        const allIngrs = (await IO.getAllIngredients(project)) || [];
-        const normalIngrs = allIngrs.filter(i => !i.prepare);
-        const preparedIngrs = allIngrs.filter(i => i.prepare);
-        setNPIngredients(normalIngrs);
-        setPIngredients(preparedIngrs);
-    };
-
-    createEffect(() => {
-        fetchIngredients();
-    });
-
-
-    const removeIngredient =
-        (id: number) => {
-            setNPIngredients((prevState: IngredientDef[]) =>
-                prevState.filter((elem: IngredientDef) => elem.id !== id)
-            );
-            setPIngredients((prevState: IngredientDef[]) =>
-                prevState.filter((elem: IngredientDef) => elem.id !== id)
-            );
-        };
-
-    const updateIngredient =
-        async (id: number, newData: Partial<IngredientDef>) => {
-
-            setNPIngredients(prevState =>
-                prevState.map(elem => elem.id === id ? { ...elem, ...newData } : elem) );
-
-            setPIngredients(prevState =>
-                prevState.map(elem => elem.id === id ? { ...elem, ...newData } : elem) );
-
-            if (significantChanges(newData))
-                await IO.updateIngredient(project, id, newData);
-        };
-
-    enum IngredientMoveDirection {
-        PreparedToPrepared,
-        PreparedToNotPrepared,
-        NotPreparedToPrepared,
-        NotPreparedToNotPrepared,
-        NoMovement
-    }
-
-    const calculateMoveDirection: (source: IngredientDef, target: IngredientDef) => IngredientMoveDirection =
-    (source, target) => {
-        const nPContainsSource = List.contains(nPIngredients())(equalsById(source));
-        const nPContainsTarget = List.contains(nPIngredients())(equalsById(target));
-        const pContainsSource = List.contains(pIngredients())(equalsById(source));
-        const pContainsTarget = List.contains(pIngredients())(equalsById(target));
-        if (nPContainsSource && nPContainsTarget) {
-            return IngredientMoveDirection.NotPreparedToNotPrepared;
-        } else
-        if (pContainsSource && pContainsTarget) {
-            return IngredientMoveDirection.PreparedToPrepared;
-        } else
-        if (nPContainsSource && pContainsTarget) {
-            return IngredientMoveDirection.NotPreparedToPrepared;
-        } else
-        if (pContainsSource && nPContainsTarget) {
-            return IngredientMoveDirection.PreparedToNotPrepared;
-        } else {
-            // should never be called but typescript complains about it
-            return IngredientMoveDirection.NoMovement;
-        }
-    }
-
-    const moveIngredient = 
-        (source: IngredientDef, target: IngredientDef) => {
-            const direction = calculateMoveDirection(source, target);
-            switch(direction) {
-                case IngredientMoveDirection.NoMovement:
-                    // As first, because we don't need to check anything else then
-                    return;
-                case IngredientMoveDirection.NotPreparedToNotPrepared:
-                    moveInList(setNPIngredients, source, target, (elem, otherElem) => ({
-                        ...elem,
-                        ...{
-                            position: otherElem.position,
-                            prepare: false,
-                        }
-                    }));
-                break;
-                case IngredientMoveDirection.PreparedToPrepared:
-                    moveInList(setPIngredients, source, target, (elem, otherElem) => ({
-                        ...elem,
-                        ...{
-                            position: otherElem.position,
-                            prepare: true,
-                        }
-                    }));
-                break;
-                case IngredientMoveDirection.PreparedToNotPrepared:
-                /**
-                 * We want to put an Ingredient from the prepared Ingredients List in the not prepared List,
-                 * to do this we need to find the place in nPIngredients, where the Ingredient should be inserted
-                 * and increase the position of all Ingredients that come after that position
-                 * The `prepare` property of the ingredient must be updated because, the ingredient is now not prepared
-                 */
-                    source.prepare = false;
-                    removeIngredient(source.id);
-                    setNPIngredients(prevState => {
-                        let result = increasePositionWithPredicate(prevState, elem => elem.position >= target.position);
-                        result = insertIntoList(result, target.position, source);
-                        return result.sort(sortByPosition);
-                    });
-                break;
-                case IngredientMoveDirection.NotPreparedToPrepared:
-                /**
-                 * We want to put an Ingredient from the prepared Ingredients List in the not prepared List,
-                 * to do this we need to find the place in nPIngredients, where the Ingredient should be inserted
-                 * and increase the position of all Ingredients that come after that position
-                 * The `prepare` property of the ingredient must be updated because, the ingredient is now prepared
-                 */
-                    source.prepare = true;
-                    removeIngredient(source.id);
-                    setPIngredients(prevState => {
-                        let result = increasePositionWithPredicate(prevState, elem => elem.position >= target.position);
-                        result = insertIntoList(result, target.position, source);
-                        return result.sort(sortByPosition);
-                    });
-                break;
-            }
-        };
-
-    function moveInList (set: Setter<IngredientDef[]>, source: IngredientDef, target: IngredientDef, transform: (elem: IngredientDef, otherElem: IngredientDef) => IngredientDef) {
-        set(prevState =>
-            prevState
-                .map(elem => {
-                    if (elem.position === source.position) {
-                        return transform(elem, target);
-                    } else if (elem.position === target.position) {
-                        return transform(elem, source);
-                    } else {
-                        return elem;
-                    }
-                })
-                .sort(sortByPosition)
-        );
-    }
-
-    const insertIntoList: (list: IngredientDef[], position: number, elem: IngredientDef) => IngredientDef[] =
-    (list, position, elem) => list.concat([ { ...elem, ...{ position } } ]);
-
-    const increasePositionWithPredicate: (list: IngredientDef[], predicate: (elem: IngredientDef) => boolean) => IngredientDef[] =
-    (list, predicate) => list.map(ingr => predicate(ingr) ? { ...ingr, ...{ position: ingr.position + 1 } } : ingr);
-
-
-    const appendIngredientPrepared = (
-        droppedIngredient: IngredientDef
-    ) => {
-            removeIngredient(droppedIngredient.id);
-            setPIngredients((prevState) =>
-                prevState.concat([
-                    {
-                        ...droppedIngredient,
-                        ...{ position: prevState.length+1, prepare: true },
-                    },
-                ])
-            );
-    };
-    const prependIngredientPrepared = (
-        droppedIngredient: IngredientDef
-    ) => {
-            removeIngredient(droppedIngredient.id);
-            setPIngredients((prevState) => {
-                let newState: IngredientDef[] =
-                    prevState.map((elem: IngredientDef) => ({...elem, ...{ position: elem.position+1 }}));
-                return [
-                    {
-                        ...droppedIngredient,
-                        ...{ position: prevState.length, prepare: true },
-                    },
-                ].concat(newState);
-            }
-            );
-    };
-
-    const appendIngredientNotPrepared = (
-        droppedIngredient: IngredientDef
-    ) => {
-            removeIngredient(droppedIngredient.id);
-            setNPIngredients((prevState) =>
-                prevState.concat([
-                    {
-                        ...droppedIngredient,
-                        ...{ position: prevState.length+1, prepare: false },
-                    },
-                ])
-            );
-        IO.updateIngredient(project, droppedIngredient.id, { position: nPIngredients.length, prepare: false }).then();
-    };
-    const prependIngredientNotPrepared = (
-        droppedIngredient: IngredientDef
-    ) => {
-            removeIngredient(droppedIngredient.id);
-            setNPIngredients((prevState) => {
-                let newState: IngredientDef[] =
-                    prevState.map((elem: IngredientDef) => ({...elem, ...{ position: elem.position+1 }}));
-                return [
-                    {
-                        ...droppedIngredient,
-                        ...{ position: prevState.length, prepare: true },
-                    },
-                ].concat(newState);
-            }
-            );
-    };
-
     const [ingredients, setIngredients] = createStore<{ PREPARED: IngredientDef[], NOT_PREPARED: IngredientDef[] }>({
         PREPARED: [],
         NOT_PREPARED: [],
     })
+
+    createEffect(async () => {
+        const allIngrs = (await IO.getAllIngredients(project)) || [];
+        const normalIngrs = allIngrs.filter(i => !i.prepare);
+        const preparedIngrs = allIngrs.filter(i => i.prepare);
+        batch(() => {
+            setIngredients("PREPARED", preparedIngrs);
+            setIngredients("NOT_PREPARED", normalIngrs);
+        })
+        console.log('ingredients');
+        console.log(ingredients);
+    });
 
     const [activeIngredient, setActiveIngredient] = createSignal<number | null>(null);
 
@@ -319,22 +115,22 @@ const IngredientsEditor: (props: IngredientsEditorProps) => JSXElement =
     function move(draggable: Draggable, droppable: Droppable, onlyWhenChangingContainer = true): void {
     const draggableContainer = chain<number, string>(getNumberId(droppable.id))(getContainer);
     const droppableContainer = typeof droppable.id === 'string'
-      ? droppable.id
+      ? some(droppable.id)
       : getContainer(droppable.id);
 
     if (
       draggableContainer != droppableContainer ||
       !onlyWhenChangingContainer
     ) {
-      const containerItemIds = ingredients[droppableContainer];
+      const containerItemIds = ingredients[unwrap(droppableContainer)];
       let index = containerItemIds.indexOf(droppable.id);
       if (index === -1) index = containerItemIds.length;
 
       batch(() => {
-        setIngredients(draggableContainer, (items: IngredientDef[]) =>
+        setIngredients(unwrap(draggableContainer) as any, (items: IngredientDef[]) =>
           items.filter((item) => item.id !== draggable.id)
         );
-        setIngredients(droppableContainer, (items: IngredientDef[]) => [
+        setIngredients(unwrap(droppableContainer) as any, (items: IngredientDef[]) => [
           ...items.slice(0, index),
           draggable.id,
           ...items.slice(index),
@@ -385,7 +181,6 @@ const IngredientsEditor: (props: IngredientsEditorProps) => JSXElement =
                     <DragDropSensors />
                     <div
                         class="flex flex-column align-start"
-                        id="ingredients-editor"
                     >
                         <For each={containerIds()}>
                             {key => <Column id={key} ingredients={ingredients[key]} />}
