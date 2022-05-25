@@ -14,8 +14,8 @@ interface None {
 
 type Option<T> = Some<T> | None;
 
-function some<T>(value: T | Some<T>): Option<T> {
-    if (isNone(value)) return none();
+function some<T>(value: T | Option<T>): Option<T> {
+    if (isNone(value) || value === null || value === undefined) return none();
     if (isSome(value)) return some(value._value);
 
     return {
@@ -28,6 +28,11 @@ function none(): None {
     return {
         _type: OptionType.None,
     };
+}
+
+const or: <A>(op: Option<A>, fallback: A) => A = (op, fallback) => {
+    if (isSome(op)) return op._value;
+    else return fallback;
 }
 
 const map: <A, B>(opA: Option<A>) => (f: (a: A) => B) => Option<B> = opA => f => {
@@ -44,7 +49,7 @@ const chain: <A, B>(opA: Option<A>) => (f: (a: A) => Option<B>) => Option<B> = o
         case OptionType.None:
             return none();
         case OptionType.Some:
-            return f(opA._value);
+            return some(f(opA._value));
     }
 }
 
@@ -69,6 +74,7 @@ export {
     isSome,
     isNone,
     unwrap,
+    or,
 };
 export type { Option };
 

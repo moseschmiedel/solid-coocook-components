@@ -1,22 +1,21 @@
-import { createEffect, createSignal, JSXElement, For } from "solid-js";
-import { Option, some, none, chain, map, unwrap } from '../util/fp/option';
+import { batch, createEffect, createSignal, For, JSXElement } from "solid-js";
+import { chain, map, none, Option, some, unwrap } from '../util/fp/option';
 import Ingredient from "./Ingredient";
 import {
-    Draggable,
-    Droppable,
+    closestCenter,
+    createDroppable,
     DragDropProvider,
     DragDropSensors,
+    Draggable,
     DragOverlay,
+    Droppable,
     SortableProvider,
-    createDroppable,
-    closestCenter,
 } from "@thisbeyond/solid-dnd";
 import { Card } from "solid-bootstrap";
 import styles from "../util/layout.module.css";
 import * as IO from "../util/io";
 
 import type { IngredientDef, ProjectDef } from "../util/Definitions";
-import { batch } from "solid-js";
 import { createStore } from "solid-js/store";
 import { pipe } from "../util/fp/function";
 import { c } from "../util/css";
@@ -158,12 +157,10 @@ const IngredientsEditor: (props: IngredientsEditorProps) => JSXElement =
         setActiveIngredient(null);
     }
 
-    function getActiveIngredient(id: number): IngredientDef {
-        return pipe(
-            id,
-            getContainer,
-                cId => ingredients[unwrap(cId)].find(i => i.id === id)
-        );
+    function getActiveIngredient(id: number): Option<IngredientDef> {
+        return map<string, IngredientDef>(
+            pipe(id, getContainer)
+        )(cId => ingredients[cId]?.find(i => i.id === id));
     }
 
     // @ts-ignore
@@ -185,7 +182,7 @@ const IngredientsEditor: (props: IngredientsEditorProps) => JSXElement =
                             {key => <Column id={key} ingredients={ingredients[key]} />}
                         </For>
                         <DragOverlay>
-                            <Ingredient ingredient={pipe(activeIngredient(), getActiveIngredient)} onDelete={() => {}} onChange={() => {}} moveIngredient={() => {}} />
+                            {unwrap(map<IngredientDef, JSXElement>(pipe(activeIngredient(), getActiveIngredient))(ingr => <Ingredient ingredient={ingr} onDelete={() => {}} onChange={() => {}} moveIngredient={() => {}} />)) ?? <></>}
                         </DragOverlay>
                     </div>
                 </DragDropProvider>
