@@ -12,13 +12,14 @@ import {
     closestCenter,
 } from "@thisbeyond/solid-dnd";
 import { Card } from "solid-bootstrap";
-import "../util/layout.css";
+import styles from "../util/layout.module.css";
 import * as IO from "../util/io";
 
 import type { IngredientDef, ProjectDef } from "../util/Definitions";
 import { batch } from "solid-js";
 import { createStore } from "solid-js/store";
 import { pipe } from "../util/fp/function";
+import { c } from "../util/css";
 
 export interface IngredientsEditorProps {
     project: ProjectDef;
@@ -179,9 +180,7 @@ const IngredientsEditor: (props: IngredientsEditorProps) => JSXElement =
                     collisionDetector={closestContainerOrItem}
                 >
                     <DragDropSensors />
-                    <div
-                        class="flex flex-column align-start"
-                    >
+                    <div class={c(styles.flex, styles.flexColumn, styles.alignStart)}>
                         <For each={containerIds()}>
                             {key => <Column id={key} ingredients={ingredients[key]} />}
                         </For>
@@ -199,7 +198,7 @@ function Column(props: { id: string, ingredients: IngredientDef[] }): JSXElement
     const droppable = createDroppable(props.id);
     // @ts-ignore
     return (
-        <div ref={droppable.ref} class="column" classList={{ "!droppable-accept": droppable.isActiveDroppable }}>
+        <div ref={droppable.ref} class={c(styles.flexColumn)} classList={{ "!droppable-accept": droppable.isActiveDroppable }}>
             <SortableProvider ids={props.ingredients.map(i => i.id)}>
                 <For each={props.ingredients}>
                     {ingredient => <Ingredient ingredient={ingredient} onDelete={() => {

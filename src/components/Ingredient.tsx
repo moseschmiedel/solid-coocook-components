@@ -1,9 +1,11 @@
 import { JSXElement } from "solid-js";
 import { Button, Form, Popover } from "solid-bootstrap";
+import { BiMoveVertical, BiTrash } from 'solid-icons/bi';
 import { createSortable } from "@thisbeyond/solid-dnd";
-import "../util/layout.css";
+import styles from "../util/layout.module.css";
 
 import type { IngredientDef } from "../util/Definitions";
+import { c } from "../util/css";
 
 export interface IngredientProps {
     ingredient: IngredientDef;
@@ -35,14 +37,14 @@ function Ingredient({ ingredient: data, onDelete, onChange, moveIngredient }: In
     return (
         <div
             ref={sortable.ref}
-            class="flex flex-row align-center justify-center"
+            class={c(styles.flex, styles.flexRow, styles.alignCenter, styles.justifyCenter)}
             style={ sortable.isActiveDraggable
                 ? { ...ingredientStyle, ...dragStyle }
                 : { ...ingredientStyle }
             }
         >
             <div {...sortable.dragActivators} style={{ flex: "none", cursor: "move" }}>
-                Drag
+                <BiMoveVertical size="32px" />
             </div>
             {/* Title */}
             <div style={{ minWidth: "8rem", flex: "none" }}>{data.article.name}</div>
@@ -98,12 +100,12 @@ function Ingredient({ ingredient: data, onDelete, onChange, moveIngredient }: In
             {/* Delete Button */}
             <div style={{ flex: "none" }}>
                 <Button variant="danger" onClick={() => onDelete(data.id)}>
-                    D
+                    <BiTrash size="24px" />
                 </Button>
             </div>
         </div>
     );
-};
+}
 
 export const significantChanges: (changes: Partial<IngredientDef>) => boolean =
 changes => {

@@ -2,27 +2,27 @@
     display: flex;
 }
 
-.flex-column {
+.flexColumn {
     flex-direction: column;
 }
 
-.flex-row {
+.flexRow {
     flex-direction: row;
 }
 
-.align-center {
+.alignCenter {
     align-items: center;
 }
 
-.justify-center {
+.justifyCenter {
     justify-items: center;
 }
 
-.align-start {
+.alignStart {
     align-items: start;
 }
 
-.justify-start {
+.justifyStart {
     justify-items: start;
 }
 
@@ -30,7 +30,7 @@
     display: grid;
 }
 
-.scrollable-y {
+.scrollableY {
     overflow-y: scroll;
     scrollbar-color: black;
     scrollbar-width: thin;
@@ -42,7 +42,7 @@
     text-overflow: ellipsis;
 }
 
-.ml-truncate {
+.mlTruncate {
     overflow: hidden;
     display: -webkit-box;
     -webkit-box-orient: vertical;
