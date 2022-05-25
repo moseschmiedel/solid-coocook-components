@@ -1,5 +1,5 @@
 import { batch, createEffect, createSignal, For, JSXElement } from "solid-js";
-import { chain, map, none, Option, some, unwrap } from '../util/fp/option';
+import { chain, isSome, map, none, Option, some, unwrap } from '../util/fp/option';
 import Ingredient from "./Ingredient";
 import {
     closestCenter,
@@ -75,17 +75,17 @@ const IngredientsEditor: (props: IngredientsEditorProps) => JSXElement =
     }
 
     function closestContainerOrItem<T extends string | number>(draggable: Draggable, droppables: Droppable[], context: DnDContext<T>): Droppable | null {
-    const closestContainer = closestCenter(
+    const closestContainer: Droppable | null = closestCenter(
       draggable,
-      droppables.filter((droppable) => chain(getNumberId(droppable.id))(getContainer)),
+      droppables.filter((droppable) => isSome(chain<number, string>(getNumberId(droppable.id))(getContainer))),
       context
     );
     if (closestContainer) {
-      const containerItemIds = ingredients[closestContainer.id];
-      const closestItem = closestCenter(
+      const ingredientsInContainerIds: undefined | number[] = ingredients[closestContainer.id]?.map(ingr => ingr.id);
+      const closestItem: Droppable | null = closestCenter(
         draggable,
         droppables.filter((droppable) =>
-          containerItemIds.includes(droppable.id)
+          ingredientsInContainerIds?.includes(unwrap(getNumberId(droppable.id))) ?? false
         ),
         context
       );
@@ -93,10 +93,10 @@ const IngredientsEditor: (props: IngredientsEditorProps) => JSXElement =
         return closestContainer;
       }
 
-      if (map(chain(pipe(draggable.id, getNumberId))(getContainer))(containerId => containerId !== closestContainer.id)) {
+      if (isSome(map(chain(pipe(draggable.id, getNumberId))(getContainer))(containerId => containerId !== closestContainer.id))) {
         const isLastItem =
-          containerItemIds.indexOf(closestItem.id) ===
-          containerItemIds.length - 1;
+          ingredientsInContainerIds.indexOf(unwrap(getNumberId(closestItem.id))) ===
+          ingredientsInContainerIds.length - 1;
 
         if (isLastItem) {
           const belowLastItem =
