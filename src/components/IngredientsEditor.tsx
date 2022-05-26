@@ -45,7 +45,7 @@ const IngredientsEditor: (props: IngredientsEditorProps) => JSXElement =
         console.log(ingredients);
     });
 
-    const [activeIngredient, setActiveIngredient] = createSignal<number | null>(null);
+    const [activeIngredientId, setActiveIngredient] = createSignal<number | null>(null);
 
     function containerIds(): string[] { return Object.keys(ingredients) }
 
@@ -182,7 +182,17 @@ const IngredientsEditor: (props: IngredientsEditorProps) => JSXElement =
                             {key => <Column id={key} ingredients={ingredients[key]} />}
                         </For>
                         <DragOverlay>
-                            {unwrap(map<IngredientDef, JSXElement>(pipe(activeIngredient(), getActiveIngredient))(ingr => <Ingredient ingredient={ingr} onDelete={() => {}} onChange={() => {}} moveIngredient={() => {}} />)) ?? <></>}
+                            {or(
+                                map<IngredientDef, JSXElement>(
+                                    getActiveIngredient(activeIngredientId()))
+                                (ingr =>
+                                    <Ingredient
+                                        ingredient={ingr}
+                                        onDelete={() => {}}
+                                        onChange={() => {}}
+                                        moveIngredient={() => {}}
+                                    />),
+                                '')}
                         </DragOverlay>
                     </div>
                 </DragDropProvider>
