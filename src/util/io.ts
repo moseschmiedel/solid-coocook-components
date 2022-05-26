@@ -1,5 +1,6 @@
 import { backend } from '../constants';
 import type { IngredientDef, ProjectDef } from './Definitions';
+import config from '../../config.json';
 
 
 const baseUrl: (project: ProjectDef) => string =
@@ -45,6 +46,7 @@ ingredient => {
 const getAllIngredients: (project: ProjectDef) => Promise<IngredientDef[] | null> =
 async project => {
     try {
+        if (config.debug) throw new Error();
         const response: BackendIngredient[] = await (await fetch(`${baseUrl(project)}/ingredients`,
             {
                 headers: {
@@ -57,7 +59,55 @@ async project => {
         return final;
     } catch(err) {
         console.error(err);
-        return null;
+        const initialNonPreparedIngredients: IngredientDef[] = [
+            {
+                id: 1,
+                position: 1,
+                prepare: false,
+                article: { name: "Oil", comment: '' },
+                value: 2,
+                current_unit: { id: 1, short_name: 'l', long_name: 'Liter'},
+                units: [
+                    { id: 1, short_name: 'l', long_name: 'Liter' },
+                    { id: 3, short_name: 'kg', long_name: 'Kilogramm' },
+                    { id: 4, short_name: 'ml', long_name: 'Milliliter' },
+                ],
+                comment: "",
+                beingDragged: false,
+            },
+            {
+                id: 3,
+                position: 3,
+                prepare: false,
+                article: { name: 'Potatoes', comment: '' },
+                value: 2,
+                current_unit: { id: 1, short_name: 'l', long_name: 'Liter'},
+                units: [
+                    { id: 1, short_name: 'l', long_name: 'Liter' },
+                    { id: 3, short_name: 'kg', long_name: 'Kilogramm' },
+                    { id: 4, short_name: 'ml', long_name: 'Milliliter' },
+                ],
+                comment: "",
+                beingDragged: false,
+            },
+            {
+                id: 2,
+                position: 2,
+                prepare: false,
+                article: { name: "Zwiebeln", comment: '' },
+                value: 4,
+                current_unit: { id: 2, short_name: 'pc.', long_name: 'Piece' },
+                units: [
+                    { id: 2, short_name: 'pc.', long_name: 'Piece' },
+                    { id: 1, short_name: 'l', long_name: 'Liter' },
+                    { id: 3, short_name: 'kg', long_name: 'Kilogramm' },
+                    { id: 4, short_name: 'ml', long_name: 'Milliliter' },
+                ],
+                comment: '',
+                beingDragged: false,
+            },
+        ];
+        return initialNonPreparedIngredients;
     }
 };
 
