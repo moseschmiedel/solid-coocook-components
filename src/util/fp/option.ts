@@ -15,7 +15,7 @@ interface None {
 type Option<T> = Some<T> | None;
 
 function some<T>(value: T | Option<T>): Option<T> {
-    if (isNone(value) || value === null || value === undefined) return none();
+    if (isNone(value)) return none();
     if (isSome(value)) return some(value._value);
 
     return {
@@ -54,10 +54,13 @@ const chain: <A, B>(opA: Option<A>) => (f: (a: A) => Option<B>) => Option<B> = o
 }
 
 function isSome<T>(o: any): o is Some<T> {
+    if (typeof o !== 'object') return false;
     return o._type === OptionType.Some;
 }
 
 function isNone(o: any): o is None {
+    if (o === null || o === undefined) return true;
+    if (typeof o !== 'object') return false;
     return o._type === OptionType.None;
 }
 
