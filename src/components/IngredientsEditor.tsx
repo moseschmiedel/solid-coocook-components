@@ -1,4 +1,4 @@
-import { batch, createEffect, createSignal, For, JSXElement } from "solid-js";
+import { batch, createEffect, createSignal, For, JSXElement, Show } from "solid-js";
 import { chain, isSome, map, none, Option, some, unwrap } from '../util/fp/option';
 import Ingredient from "./Ingredient";
 import {
@@ -182,17 +182,15 @@ const IngredientsEditor: (props: IngredientsEditorProps) => JSXElement =
                             {key => <Column id={key} ingredients={ingredients[key]} />}
                         </For>
                         <DragOverlay>
-                            {or(
-                                map<IngredientDef, JSXElement>(
-                                    getActiveIngredient(activeIngredientId()))
-                                (ingr =>
+                            <Show when={unwrap(getActiveIngredient(activeIngredientId()))}>
+                                {activeIngredient =>
                                     <Ingredient
-                                        ingredient={ingr}
+                                        ingredient={activeIngredient}
                                         onDelete={() => {}}
                                         onChange={() => {}}
                                         moveIngredient={() => {}}
-                                    />),
-                                '')}
+                                    />}
+                            </Show>
                         </DragOverlay>
                     </div>
                 </DragDropProvider>
@@ -208,10 +206,13 @@ function Column(props: { id: string, ingredients: IngredientDef[] }): JSXElement
         <div ref={droppable.ref} class={c(styles.flexColumn)} classList={{ "!droppable-accept": droppable.isActiveDroppable }}>
             <SortableProvider ids={props.ingredients.map(i => i.id)}>
                 <For each={props.ingredients}>
-                    {ingredient => <Ingredient ingredient={ingredient} onDelete={() => {
-                    }} onChange={() => {
-                    }} moveIngredient={() => {
-                    }}/>}
+                    {ingredient =>
+                        <Ingredient
+                            ingredient={ingredient}
+                            onDelete={() => {}}
+                            onChange={() => {}}
+                            moveIngredient={() => {}}
+                        />}
                 </For>
             </SortableProvider>
         </div>
