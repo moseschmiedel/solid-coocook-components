@@ -2,3 +2,8 @@
     font-size: 1.3rem;
     font-weight: bold;
 }
+
+.dropContainer {
+    min-height: 100px;
+    width: 100%;
+}
