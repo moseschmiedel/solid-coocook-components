@@ -1,6 +1,6 @@
-import { batch, createEffect, createSignal, For, JSXElement, Show } from "solid-js";
-import { chain, isSome, map, none, Option, some, unwrap } from '../util/fp/option';
-import Ingredient from "./Ingredient";
+import { batch, createEffect, createResource, createSignal, For, JSXElement, Show, Suspense } from "solid-js";
+import { isNone, isSome, map, none, Option, some } from '../util/fp/option';
+import { Ingredient, DraggableIngredient } from "./Ingredient";
 import {
     closestCenter,
     createDroppable,
@@ -8,14 +8,16 @@ import {
     DragDropSensors,
     Draggable,
     DragOverlay,
-    Droppable,
-    SortableProvider,
+    Droppable, maybeTransformStyle,
+    SortableProvider, useDragDropContext,
+    DragDropDebugger,
 } from "@thisbeyond/solid-dnd";
 import { Card } from "solid-bootstrap";
-import styles from "../util/layout.module.css";
+import layoutStyles from "../util/layout.module.css";
+import styles from "./IngredientsEditor.module.css";
 import * as IO from "../util/io";
 
-import type { IngredientDef, ProjectDef } from "../util/Definitions";
+import type { IngredientDef, IngredientDefRO, ProjectDef } from "../util/Definitions";
 import { createStore } from "solid-js/store";
 import { pipe } from "../util/fp/function";
 import { c } from "../util/css";
@@ -25,35 +27,46 @@ export interface IngredientsEditorProps {
 }
 
 
+type IngredientsStore = {
+    [container in ContainerID]: IngredientDef[]
+};
+
+type IngredientID = number;
+type ContainerID = 'PREPARED' | 'NOT_PREPARED';
+
+function isContainerID(string: string): string is ContainerID {
+    return ['PREPARED', 'NOT_PREPARED'].includes(string);
+}
+
 const IngredientsEditor: (props: IngredientsEditorProps) => JSXElement =
 ({ project }) => {
 
-    const [ingredients, setIngredients] = createStore<{ PREPARED: IngredientDef[], NOT_PREPARED: IngredientDef[] }>({
+    const [ingResource, { refetch: refetchIngredients, mutate: setIngResource }] = createResource(project, (p) => IO.getAllIngredients(p));
+
+    const [ingredients, setIngredients] = createStore<IngredientsStore>({
         PREPARED: [],
         NOT_PREPARED: [],
     })
 
     createEffect(async () => {
-        const allIngrs = (await IO.getAllIngredients(project)) || [];
-        const normalIngrs = allIngrs.filter(i => !i.prepare);
-        const preparedIngrs = allIngrs.filter(i => i.prepare);
-        batch(() => {
-            setIngredients("PREPARED", preparedIngrs);
-            setIngredients("NOT_PREPARED", normalIngrs);
-        })
-        console.log('ingredients');
-        console.log(ingredients);
+        const allIngrs = ingResource();
+        if (allIngrs) {
+            const normalIngrs = allIngrs.filter(i => !i.prepare);
+            const preparedIngrs = allIngrs.filter(i => i.prepare);
+            batch(() => {
+                setIngredients("PREPARED", preparedIngrs);
+                setIngredients("NOT_PREPARED", normalIngrs);
+            })
+        }
     });
 
-    const [activeIngredientId, setActiveIngredient] = createSignal<number | null>(null);
+    const [activeIngredientId, setActiveIngredientId] = createSignal<IngredientID | null>(null);
 
-    function containerIds(): string[] { return Object.keys(ingredients) }
+    function containerIds(): ContainerID[] { return Object.keys(ingredients).filter(isContainerID) }
 
-    function isContainer(id: string): boolean { return containerIds().includes(id) }
-
-    function getContainer(id: number): Option<string> {
+    function getContainer(id: number): Option<ContainerID> {
         for (const [key, items] of (Object.entries(ingredients) as [string, IngredientDef[]][])) {
-            if (items.map(i => i.id).includes(id)) {
+            if (items.map(i => i.id).includes(id) && isContainerID(key)) {
                 return some(key);
             }
         }
@@ -74,96 +87,136 @@ const IngredientsEditor: (props: IngredientsEditorProps) => JSXElement =
         return some(id as string);
     }
 
-    function closestContainerOrItem<T extends string | number>(draggable: Draggable, droppables: Droppable[], context: DnDContext<T>): Droppable | null {
-    const closestContainer: Droppable | null = closestCenter(
-      draggable,
-      droppables.filter((droppable) => isSome(chain<number, string>(getNumberId(droppable.id))(getContainer))),
-      context
-    );
-    if (closestContainer) {
-      const ingredientsInContainerIds: undefined | number[] = ingredients[closestContainer.id]?.map(ingr => ingr.id);
-      const closestItem: Droppable | null = closestCenter(
-        draggable,
-        droppables.filter((droppable) =>
-          ingredientsInContainerIds?.includes(unwrap(getNumberId(droppable.id))) ?? false
-        ),
-        context
-      );
-      if (!closestItem) {
-        return closestContainer;
-      }
+    type ContainerDroppable = {
+        id: ContainerID,
+        data: { dndType: IngDnD.Container },
+    } & Droppable;
 
-      if (isSome(map(chain(pipe(draggable.id, getNumberId))(getContainer))(containerId => containerId !== closestContainer.id))) {
-        const isLastItem =
-          ingredientsInContainerIds.indexOf(unwrap(getNumberId(closestItem.id))) ===
-          ingredientsInContainerIds.length - 1;
+    type IngredientSortable = {
+        id: IngredientID,
+        data: {
+            dndType: IngDnD.Ingredient,
+            ingredient: IngredientDef
+        },
+    } & Droppable;
 
-        if (isLastItem) {
-          const belowLastItem =
-            draggable.transformed.center.y > closestItem.transformed.center.y;
-
-          if (belowLastItem) {
-            return closestContainer;
-          }
-        }
-      }
-      return closestItem;
+    function isContainer(droppable: Droppable): droppable is ContainerDroppable {
+        return droppable.data.dndType === IngDnD.Container;
     }
-    return null;
+
+    function isIngredient(sortable: Draggable | Droppable): sortable is IngredientSortable {
+        return sortable.data.dndType === IngDnD.Ingredient;
+    }
+
+    function closestContainerOrItem<T extends string | number>(draggable: Draggable, droppables: Droppable[], context: DnDContext<T>): Droppable | null {
+        if (!isIngredient(draggable)) return null;
+
+        function predicate(id: string | number): boolean {
+            return isSome(getStringId(id));
+        }
+
+        const closestContainer: Droppable | null = closestCenter(
+          draggable,
+          droppables.filter(droppable => isContainer(droppable)),
+          context
+        );
+
+        if (closestContainer && isContainer(closestContainer)) {
+            const ingredientsInContainerIds: number[] = ingredients[closestContainer.id]?.map(ingr => ingr.id) ?? [];
+            const closestItem: Droppable | null = closestCenter(
+                draggable,
+                droppables.filter(droppable => isIngredient(droppable) && ingredientsInContainerIds.includes(droppable.id)),
+                context);
+
+            if (!closestItem || !isIngredient(closestItem)) {
+                return closestContainer;
+            }
+
+            if (map<string, boolean>(getContainer(draggable.id))(containerId => containerId !== closestContainer.id).unwrap()) {
+                const isLastItem =
+                    ingredientsInContainerIds.indexOf(closestItem.id) ===
+                    ingredientsInContainerIds.length - 1;
+
+                if (isLastItem) {
+                    const belowLastItem =
+                        draggable.transformed.center.y > closestItem.transformed.center.y;
+
+                    if (belowLastItem) {
+                        return closestContainer;
+                    }
+                }
+            }
+            return closestItem;
+        }
+        return null;
   }
 
-    function move(draggable: Draggable, droppable: Droppable, onlyWhenChangingContainer = true): void {
-    const draggableContainer = chain<number, string>(getNumberId(droppable.id))(getContainer);
-    const droppableContainer = typeof droppable.id === 'string'
-      ? some(droppable.id)
-      : getContainer(droppable.id);
+  function move(draggable: Draggable, droppable: Droppable, onlyWhenChangingContainer = true, final = false): void {
+        if (!isIngredient(draggable)) return;
+        if (!isContainer(droppable) && !isIngredient(droppable)) return;
 
-    if (
-      draggableContainer != droppableContainer ||
-      !onlyWhenChangingContainer
-    ) {
-      const containerItemIds = ingredients[unwrap(droppableContainer)];
-      let index = containerItemIds.indexOf(droppable.id);
-      if (index === -1) index = containerItemIds.length;
+        const maybeDraggableContainer = getContainer(draggable.id);
+        const maybeDroppableContainer = isContainer(droppable) ? some(droppable.id as ContainerID) : getContainer(droppable.id);
 
-      batch(() => {
-        setIngredients(unwrap(draggableContainer) as any, (items: IngredientDef[]) =>
-          items.filter((item) => item.id !== draggable.id)
-        );
-        setIngredients(unwrap(droppableContainer) as any, (items: IngredientDef[]) => [
-          ...items.slice(0, index),
-          draggable.id,
-          ...items.slice(index),
-        ]);
-      });
-    }
+        if (isNone(maybeDraggableContainer) || isNone(maybeDroppableContainer)) return;
+
+        const draggableContainer: ContainerID = maybeDraggableContainer.unwrap();
+        const droppableContainer: ContainerID = maybeDroppableContainer.unwrap();
+
+        if (draggableContainer !== droppableContainer || !onlyWhenChangingContainer) {
+            const containerItemIds = ingredients[droppableContainer].map(i => i.id);
+            let index = isIngredient(droppable)
+                ? containerItemIds.indexOf(droppable.id)
+                : containerIds().length;
+
+            batch(() => {
+                setIngredients(draggableContainer,
+                        items => items.filter(item => item.id !== draggable.id));
+                setIngredients(droppableContainer, items => [
+                    ...items.slice(0, index),
+                    draggable.data.ingredient,
+                    ...items.slice(index),
+                ]);
+            });
+
+            if (final) {
+                setIngResource(prevIngs => prevIngs.map(ing => {
+                    let mutIng = { ...ing };
+                    if (mutIng.id === draggable.id) {
+                        mutIng.prepare = droppableContainer === 'PREPARE';
+                    }
+                    return mutIng;
+                }));
+            }
+        }
   }
 
 
     function onDragStart({ draggable }: { draggable: Draggable | null }): void {
-        setActiveIngredient(pipe(getNumberId(draggable.id), unwrap));
+        if (!isIngredient(draggable)) return;
+        setActiveIngredientId(draggable.id);
     }
 
     function onDragOver({ draggable, droppable }: { draggable: Draggable | null, droppable: Droppable | null }): void {
         if (draggable && droppable) {
-            move(draggable, droppable, false);
+            move(draggable, droppable);
         }
     }
 
     function onDragEnd({ draggable, droppable }: { draggable: Draggable | null, droppable: Droppable | null }): void {
         if (draggable && droppable) {
-            move(draggable, droppable, false);
+            move(draggable, droppable, false, true);
         }
-        setActiveIngredient(null);
+        setActiveIngredientId(null);
     }
 
-    function getActiveIngredient(id: number): Option<IngredientDef> {
-        return map<string, IngredientDef>(
-            pipe(id, getContainer)
-        )(cId => ingredients[cId]?.find(i => i.id === id));
+    function getActiveIngredient(id: number): Option<IngredientDefRO> {
+        const maybeContainer = getContainer(id);
+        if (isNone(maybeContainer)) return none();
+
+        return some(ingredients[maybeContainer.unwrap()].find(i => i.id === id));
     }
 
-    // @ts-ignore
     return (
         <Card>
             <Card.Header>
@@ -177,42 +230,52 @@ const IngredientsEditor: (props: IngredientsEditorProps) => JSXElement =
                     collisionDetector={closestContainerOrItem}
                 >
                     <DragDropSensors />
-                    <div class={c(styles.flex, styles.flexColumn, styles.alignStart)}>
-                        <For each={containerIds()}>
-                            {key => <Column id={key} ingredients={ingredients[key]} />}
-                        </For>
-                        <DragOverlay>
-                            <Show when={unwrap(getActiveIngredient(activeIngredientId()))}>
-                                {activeIngredient =>
-                                    <Ingredient
-                                        ingredient={activeIngredient}
-                                        onDelete={() => {}}
-                                        onChange={() => {}}
-                                        moveIngredient={() => {}}
-                                    />}
-                            </Show>
-                        </DragOverlay>
-                    </div>
+                    <DragDropDebugger />
+                    <Suspense fallback={"...loading"}>
+                        <div class={c(layoutStyles.flex, layoutStyles.flexColumn, layoutStyles.alignStart)}>
+                            <For each={containerIds()}>
+                                {key => <Column id={key} ingredients={ingredients[key]} /> }
+                            </For>
+                            <DragOverlay>
+                                <Show when={getActiveIngredient(activeIngredientId()).unwrap() ?? false}>
+                                    {activeIngredient =>
+                                        <Ingredient
+                                            ingredient={activeIngredient}
+                                            onDelete={() => {}}
+                                            onChange={() => {}}
+                                            moveIngredient={() => {}}
+                                        />}
+                                </Show>
+                            </DragOverlay>
+                        </div>
+                    </Suspense>
                 </DragDropProvider>
             </Card.Body>
         </Card>
     );
 };
 
-function Column(props: { id: string, ingredients: IngredientDef[] }): JSXElement {
-    const droppable = createDroppable(props.id);
-    // @ts-ignore
+export enum IngDnD {
+    Container = 'CONTAINER',
+    Ingredient = 'INGREDIENT',
+}
+
+function Column(props: { id: string, ingredients: readonly IngredientDefRO[] }): JSXElement {
+    const droppable = createDroppable(props.id, { dndType: IngDnD.Container });
+
     return (
-        <div ref={droppable.ref} class={c(styles.flexColumn)} classList={{ "!droppable-accept": droppable.isActiveDroppable }}>
+        <div ref={droppable.ref} class={c(layoutStyles.flexColumn, styles.dropContainer)} classList={{ '!droppable-accept': droppable.isActiveDroppable }}>
+            <div class={c(styles.listHeader)}>{props.id}</div>
             <SortableProvider ids={props.ingredients.map(i => i.id)}>
                 <For each={props.ingredients}>
-                    {ingredient =>
-                        <Ingredient
+                    {ingredient => {
+                        return <DraggableIngredient
                             ingredient={ingredient}
                             onDelete={() => {}}
                             onChange={() => {}}
                             moveIngredient={() => {}}
                         />}
+                    }
                 </For>
             </SortableProvider>
         </div>

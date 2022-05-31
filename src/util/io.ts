@@ -25,7 +25,6 @@ ingredient => ({
         value: ingredient.value,
         current_unit: ingredient.current_unit,
         units: ingredient.units,
-        beingDragged: false,
 });
 
 const toBackendFormat: (ingredient: Partial<IngredientDef>) => Partial<BackendIngredient> =
@@ -53,10 +52,7 @@ async project => {
                     'Content-Type': 'application/json',
                 }
             })).json();
-        const final: IngredientDef[] = response.map(fromBackendFormat);
-        console.log('final');
-        console.log(final);
-        return final;
+        return response.map(fromBackendFormat);
     } catch(err) {
         console.error(err);
         const initialNonPreparedIngredients: IngredientDef[] = [
@@ -73,7 +69,6 @@ async project => {
                     { id: 4, short_name: 'ml', long_name: 'Milliliter' },
                 ],
                 comment: "",
-                beingDragged: false,
             },
             {
                 id: 3,
@@ -88,7 +83,6 @@ async project => {
                     { id: 4, short_name: 'ml', long_name: 'Milliliter' },
                 ],
                 comment: "",
-                beingDragged: false,
             },
             {
                 id: 2,
@@ -104,7 +98,6 @@ async project => {
                     { id: 4, short_name: 'ml', long_name: 'Milliliter' },
                 ],
                 comment: '',
-                beingDragged: false,
             },
         ];
         return initialNonPreparedIngredients;

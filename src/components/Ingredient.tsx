@@ -1,17 +1,19 @@
-import { JSXElement } from "solid-js";
-import { Button, Form, Popover } from "solid-bootstrap";
+import { createEffect, JSXElement } from "solid-js";
+import { Button, Form } from "solid-bootstrap";
 import { BiMoveVertical, BiTrash } from 'solid-icons/bi';
-import { createSortable } from "@thisbeyond/solid-dnd";
+import { createSortable, maybeTransformStyle, useDragDropContext } from "@thisbeyond/solid-dnd";
 import styles from "../util/layout.module.css";
 
-import type { IngredientDef } from "../util/Definitions";
+import type { IngredientDef, IngredientDefRO } from "../util/Definitions";
 import { c } from "../util/css";
+import { For } from "solid-js/types/server";
+import IngredientsEditor, { IngDnD } from "./IngredientsEditor";
 
 export interface IngredientProps {
-    ingredient: IngredientDef;
+    ingredient: IngredientDefRO;
     onDelete: (id: number) => void;
     onChange: (id: number, newData: any) => void;
-    moveIngredient: (from: IngredientDef, to: IngredientDef) => void;
+    moveIngredient: (from: IngredientDefRO, to: IngredientDefRO) => void;
 }
 
 const ingredientStyle = {
@@ -22,30 +24,50 @@ const ingredientStyle = {
     height: "3rem",
 };
 
-function Ingredient({ ingredient: data, onDelete, onChange, moveIngredient }: IngredientProps): JSXElement {
-    const sortable = createSortable(data.id);
-
-    function FullComment(props: any) {
-        return <Popover id="popover-basic" content {...props}></Popover>;
-    }
-
-    const dragStyle = {
-        border: "dashed 2px grey",
-        opacity: 0.5,
-    };
+function DraggableIngredient({ ingredient, onDelete, onChange, moveIngredient }: IngredientProps): JSXElement {
+    const sortable = createSortable(ingredient.id, { dndType: IngDnD.Ingredient, ingredient });
 
     return (
         <div
             ref={sortable.ref}
-            class={c(styles.flex, styles.flexRow, styles.alignCenter, styles.justifyCenter)}
-            style={ sortable.isActiveDraggable
-                ? { ...ingredientStyle, ...dragStyle }
-                : { ...ingredientStyle }
-            }
+            class={c(styles.flex, styles.flexRow, styles.alignCenter, styles.justifyCenter, styles.ingredient)}
+            classList={{ [styles.dragging]: sortable.isActiveDraggable }}
+            style={maybeTransformStyle(sortable.transform)}
         >
-            <div {...sortable.dragActivators} style={{ flex: "none", cursor: "move" }}>
+            <div style={{ flex: "none", cursor: "move" }} {...sortable.dragActivators}>
                 <BiMoveVertical size="32px" />
             </div>
+            <IngredientDetail
+                ingredient={ingredient}
+                onDelete={onDelete}
+                onChange={onChange}
+                moveIngredient={moveIngredient}
+            />
+        </div>);
+}
+
+function Ingredient({ ingredient, onDelete, onChange, moveIngredient }: IngredientProps): JSXElement {
+    return (
+        <div
+            class={c(styles.flex, styles.flexRow, styles.alignCenter, styles.justifyCenter)}
+            style={ingredientStyle}
+        >
+            <div style={{ flex: "none", cursor: "move" }}>
+                <BiMoveVertical size="32px" />
+            </div>
+            <IngredientDetail
+                ingredient={ingredient}
+                onDelete={onDelete}
+                onChange={onChange}
+                moveIngredient={moveIngredient}
+            />
+        </div>);
+}
+
+function IngredientDetail({ ingredient: data, onDelete, onChange, moveIngredient }: IngredientProps): JSXElement {
+
+    return (
+        <>
             {/* Title */}
             <div style={{ minWidth: "8rem", flex: "none" }}>{data.article.name}</div>
             {/* Value */}
@@ -69,10 +91,9 @@ function Ingredient({ ingredient: data, onDelete, onChange, moveIngredient }: In
             </div>
             {/* Unit */}
             <div style={{ width: "6.5rem", flex: "none" }}>
-                <Form.Control
-                    as="select"
+                <Form.Select
                     value={data.current_unit.id}
-                    onInput={(e) => {
+                    onChange={(e) => {
                         onChange(
                             data.id,
                             Object.assign(data, {
@@ -81,12 +102,11 @@ function Ingredient({ ingredient: data, onDelete, onChange, moveIngredient }: In
                         );
                     }}
                 >
-                    {data.units.map((unit) => (
+                    {data.units.map(unit =>
                         <option value={unit.id}>
                             {unit.short_name} ({unit.long_name})
-                        </option>
-                    ))}
-                </Form.Control>
+                        </option>)}
+                </Form.Select>
             </div>
             {/* Comment */}
             {/*<OverlayTrigger delay={{ show: 250, hide: 400 }} overlay={<FullComment>{data.comment}</FullComment>} placement="right">*/}
@@ -103,7 +123,7 @@ function Ingredient({ ingredient: data, onDelete, onChange, moveIngredient }: In
                     <BiTrash size="24px" />
                 </Button>
             </div>
-        </div>
+        </>
     );
 }
 
@@ -122,4 +142,7 @@ changes => {
     return false;
 }
 
-export default Ingredient;
+export {
+    Ingredient,
+    DraggableIngredient,
+};
